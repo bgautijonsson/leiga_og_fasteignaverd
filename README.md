@@ -1,0 +1,1 @@
+# leiga_og_fasteignaverd
