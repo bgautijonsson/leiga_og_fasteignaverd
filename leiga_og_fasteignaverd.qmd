@@ -80,7 +80,7 @@ d2 <- kaupskra |>
     mutate(ar = year(utgdag)) |> 
     filter(onothaefur_samningur == 0, tegund == "Fjolbyli", fullbuid == 1,
            einflm < 150, einflm >= 50) |> 
-    select(svfn, ar, kaupverd, staerd = einflm, tegund) |> 
+    select(svfn, ar, kaupverd, fasteignamat, staerd = einflm, tegund) |> 
     mutate(staerd = cut(staerd,
                         breaks = c(50, 60, 70, 80, 90, 100, 110, 150),
                         labels = c("50-59",
@@ -95,6 +95,7 @@ d2 <- kaupskra |>
            kaupverd = kaupverd * 1000) |> 
     group_by(svfn, ar, staerd) |> 
     summarise(kaupverd = median(kaupverd),
+              fasteignamat = median(fasteignamat),
               .groups = "drop")
 
 
@@ -105,6 +106,8 @@ d <- d1 |>
         d2,
         by = c("ar", "staerd", "svfn")
     )
+
+d |> write_csv("leiga_kaupverd_fasteignamat.csv")
 
 plot_dat <- d |> 
     mutate(hlutf = leiguverd / kaupverd) |> 
@@ -149,66 +152,11 @@ ggsave(plot = p, filename = "leiga_hlutf_kaupverd.png",
 
 # Leiga hlutfall af fasteignamati
 
-```{r}
-d1 <- leiguskra |> 
-    janitor::clean_names() |> 
-    mutate(ar = dmy(utgdag) |> year()) |> 
-    filter(is.na(onothaefur_samningur), tegund == "Fjolbyli",
-           staerd < 150, staerd >= 50, fj_herbergi > 0, fj_herbergi < 5) |> 
-    select(svfn, ar, leiguverd = heildarverd, staerd, tegund) |> 
-    mutate(staerd = cut(staerd,
-                        breaks = c(50, 60, 70, 80, 90, 100, 110, 150),
-                        labels = c("50-59",
-                                   "60-69",
-                                   "70-79",
-                                   "80-89",
-                                   "90-99",
-                                   "100-109",
-                                   "110-150"),
-                        include.lowest = TRUE,
-                        right = FALSE)) |> 
-    group_by(svfn, ar, staerd) |> 
-    summarise(leiguverd = median(leiguverd),
-              .groups = "drop")
-
-
-d2 <- kaupskra |> 
-    janitor::clean_names() |> 
-    mutate(ar = year(utgdag)) |> 
-    filter(onothaefur_samningur == 0, tegund == "Fjolbyli", fullbuid == 1,
-           einflm < 150, einflm >= 50) |> 
-    select(svfn, ar, kaupverd = fasteignamat, staerd = einflm, tegund) |> 
-    mutate(staerd = cut(staerd,
-                        breaks = c(50, 60, 70, 80, 90, 100, 110, 150),
-                        labels = c("50-59",
-                                   "60-69",
-                                   "70-79",
-                                   "80-89",
-                                   "90-99",
-                                   "100-109",
-                                   "110-150"),
-                        include.lowest = TRUE,
-                        right = FALSE),
-           kaupverd = kaupverd * 1000) |> 
-    group_by(svfn, ar, staerd) |> 
-    summarise(kaupverd = median(kaupverd),
-              .groups = "drop")
-
-
-
-
-d <- d1 |> 
-    inner_join(
-        d2,
-        by = c("ar", "staerd", "svfn")
-    )
-```
-
 
 
 ```{r, fig.width = 12}
 plot_dat <- d |> 
-    mutate(hlutf = leiguverd / kaupverd) |> 
+    mutate(hlutf = leiguverd / fasteignamat) |> 
     group_by(ar, staerd) |> 
     summarise(hlutf = median(hlutf),
               .groups = "drop") |> 
