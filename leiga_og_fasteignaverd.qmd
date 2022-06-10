@@ -141,7 +141,7 @@ p <- plot_dat |>
          y = NULL,
          col = NULL,
          title = "Hvernig hefur mánaðarlegt leiguverð þróast sem hlutfall af kaupverði fjölbýli?",
-         subtitle = "Byggt á miðgildi leiguverðs og kaupverðs innan hvers SVFN og fermetrafjöldaflokks eftir ári",
+         subtitle = "Byggt á miðgildi leiguverðs og kaupverðs innan hvers sveitarfélags og fermetrafjöldaflokks eftir ári",
          caption = "Kóði og gögn: https://github.com/bgautijonsson/leiga_og_fasteignaverd")
 
 p
