@@ -1,0 +1,248 @@
+---
+title: "Leiga og fasteignaverð"
+author: 
+    -   name: "Brynjólfur Gauti Guðrúnar Jónsson"
+        url: "https://twitter.com/bgautijonsson"
+        affiliation: "Tölfræði, Raunvísindadeild Háskóla Íslands"
+        affiliation-url: "https://www.hi.is/tolfraedi_0"
+date: today
+format: 
+    html:
+        code-fold: true
+        toc: true
+        toc-location: right
+        toc-title: Efnisyfirlit
+        smooth-scrol: true
+        margin-left: "10px"
+        fig-width: 14
+        fig-asp: 0.621
+        out-width: "100%"
+editor: source
+theme: flatly
+title-block-banner: true
+standalone: true
+self-contained: true
+execute: 
+  warning: false
+  error: false       
+---
+
+
+```{r}
+#| include: false
+
+library(cowplot)
+library(tidyverse)
+library(scales)
+library(readxl)
+library(ggthemes)
+library(kableExtra)
+library(gganimate)
+library(lubridate)
+library(geomtextpath)
+```
+
+
+```{r}
+kaupskra <- read_csv2("https://www.skra.is/library/Skrar/kaupskra/kaupskra.csv", locale = locale(encoding = "ISO-8859-1"))
+
+
+leiguskra <- read_csv2("https://www.skra.is/library/Skrar/leiguskra/leiguskra.csv")
+```
+
+# Leiga hlutfall af kaupverði
+
+```{r, fig.width = 12}
+d1 <- leiguskra |> 
+    janitor::clean_names() |> 
+    mutate(ar = dmy(utgdag) |> year()) |> 
+    filter(is.na(onothaefur_samningur), tegund == "Fjolbyli",
+           staerd < 150, staerd >= 50, fj_herbergi > 0, fj_herbergi < 5) |> 
+    select(svfn, ar, leiguverd = heildarverd, staerd, tegund) |> 
+    mutate(staerd = cut(staerd,
+                        breaks = c(50, 60, 70, 80, 90, 100, 110, 150),
+                        labels = c("50-59",
+                                   "60-69",
+                                   "70-79",
+                                   "80-89",
+                                   "90-99",
+                                   "100-109",
+                                   "110-150"),
+                        include.lowest = TRUE,
+                        right = FALSE)) |> 
+    group_by(svfn, ar, staerd) |> 
+    summarise(leiguverd = median(leiguverd),
+              .groups = "drop")
+
+
+d2 <- kaupskra |> 
+    janitor::clean_names() |> 
+    mutate(ar = year(utgdag)) |> 
+    filter(onothaefur_samningur == 0, tegund == "Fjolbyli", fullbuid == 1,
+           einflm < 150, einflm >= 50) |> 
+    select(svfn, ar, kaupverd, staerd = einflm, tegund) |> 
+    mutate(staerd = cut(staerd,
+                        breaks = c(50, 60, 70, 80, 90, 100, 110, 150),
+                        labels = c("50-59",
+                                   "60-69",
+                                   "70-79",
+                                   "80-89",
+                                   "90-99",
+                                   "100-109",
+                                   "110-150"),
+                        include.lowest = TRUE,
+                        right = FALSE),
+           kaupverd = kaupverd * 1000) |> 
+    group_by(svfn, ar, staerd) |> 
+    summarise(kaupverd = median(kaupverd),
+              .groups = "drop")
+
+
+
+
+d <- d1 |> 
+    inner_join(
+        d2,
+        by = c("ar", "staerd", "svfn")
+    )
+
+plot_dat <- d |> 
+    mutate(hlutf = leiguverd / kaupverd) |> 
+    group_by(ar, staerd) |> 
+    summarise(hlutf = median(hlutf),
+              .groups = "drop") |> 
+    mutate(staerd = str_c(staerd, " m2") |> 
+               fct_relevel("50-59 m2",
+                           "60-69 m2",
+                           "70-79 m2",
+                           "80-89 m2",
+                           "90-99 m2",
+                           "100-109 m2"))
+
+p <- plot_dat |> 
+    ggplot(aes(ar, hlutf)) +
+    geom_line(aes(group = staerd, col = staerd)) +
+    geom_rangeframe() +
+    scale_x_continuous(breaks = 2011:2022, expand = expansion(add = 0.2)) +
+    scale_y_continuous(labels = label_percent(accuracy = 0.01),
+                       breaks = c(0, 0.001, 0.002, 0.003, range(plot_dat$hlutf), 0.005, 0.006, 0.007),
+                       limits = c(0, NA),
+                       expand = expansion()) +
+    scale_colour_brewer(type = "div", palette = "RdBu", guide = guide_legend(nrow = 1)) +
+    theme_tufte() +
+    theme(legend.position = "top",
+          plot.title = element_text(face = "bold")) +
+    labs(x = NULL,
+         y = NULL,
+         col = NULL,
+         title = "Hvernig hefur leiguverð sem hlutfall af kaupverði fjölbýli þróast?",
+         subtitle = "Byggt á miðgildi leiguverðs og kaupverðs innan hvers SVFN og stærðarhóps eftir ári",
+         caption = "Kóði og gögn: https://github.com/bgautijonsson/leiga_og_fasteignaverd")
+
+p
+
+ggsave(plot = p, filename = "leiga_hlutf_kaupverd.png",
+       width = 8, height = 0.5 * 8, scale = 1.3, bg = "white")
+```
+
+
+
+# Leiga hlutfall af fasteignamati
+
+```{r}
+d1 <- leiguskra |> 
+    janitor::clean_names() |> 
+    mutate(ar = dmy(utgdag) |> year()) |> 
+    filter(is.na(onothaefur_samningur), tegund == "Fjolbyli",
+           staerd < 150, staerd >= 50, fj_herbergi > 0, fj_herbergi < 5) |> 
+    select(svfn, ar, leiguverd = heildarverd, staerd, tegund) |> 
+    mutate(staerd = cut(staerd,
+                        breaks = c(50, 60, 70, 80, 90, 100, 110, 150),
+                        labels = c("50-59",
+                                   "60-69",
+                                   "70-79",
+                                   "80-89",
+                                   "90-99",
+                                   "100-109",
+                                   "110-150"),
+                        include.lowest = TRUE,
+                        right = FALSE)) |> 
+    group_by(svfn, ar, staerd) |> 
+    summarise(leiguverd = median(leiguverd),
+              .groups = "drop")
+
+
+d2 <- kaupskra |> 
+    janitor::clean_names() |> 
+    mutate(ar = year(utgdag)) |> 
+    filter(onothaefur_samningur == 0, tegund == "Fjolbyli", fullbuid == 1,
+           einflm < 150, einflm >= 50) |> 
+    select(svfn, ar, kaupverd = fasteignamat, staerd = einflm, tegund) |> 
+    mutate(staerd = cut(staerd,
+                        breaks = c(50, 60, 70, 80, 90, 100, 110, 150),
+                        labels = c("50-59",
+                                   "60-69",
+                                   "70-79",
+                                   "80-89",
+                                   "90-99",
+                                   "100-109",
+                                   "110-150"),
+                        include.lowest = TRUE,
+                        right = FALSE),
+           kaupverd = kaupverd * 1000) |> 
+    group_by(svfn, ar, staerd) |> 
+    summarise(kaupverd = median(kaupverd),
+              .groups = "drop")
+
+
+
+
+d <- d1 |> 
+    inner_join(
+        d2,
+        by = c("ar", "staerd", "svfn")
+    )
+```
+
+
+
+```{r, fig.width = 12}
+plot_dat <- d |> 
+    mutate(hlutf = leiguverd / kaupverd) |> 
+    group_by(ar, staerd) |> 
+    summarise(hlutf = median(hlutf),
+              .groups = "drop") |> 
+    mutate(staerd = str_c(staerd, " m2") |> 
+               fct_relevel("50-59 m2",
+                           "60-69 m2",
+                           "70-79 m2",
+                           "80-89 m2",
+                           "90-99 m2",
+                           "100-109 m2"))
+
+p <- plot_dat |> 
+    ggplot(aes(ar, hlutf)) +
+    geom_line(aes(group = staerd, col = staerd)) +
+    geom_rangeframe() +
+    scale_x_continuous(breaks = 2011:2022, expand = expansion(add = 0.2)) +
+    scale_y_continuous(labels = label_percent(accuracy = 0.01),
+                       breaks = c(0, 0.002, 0.004, range(plot_dat$hlutf), 0.006, 0.008,  0.01),
+                       limits = c(0, NA),
+                       expand = expansion()) +
+    scale_colour_brewer(type = "div", palette = "RdBu", guide = guide_legend(nrow = 1)) +
+    theme_tufte() +
+    theme(legend.position = "top",
+          plot.title = element_text(face = "bold")) +
+    labs(x = NULL,
+         y = NULL,
+         col = NULL,
+         title = "Hvernig hefur leiguverð sem hlutfall af fasteignamati fjölbýli þróast?",
+         subtitle = "Byggt á miðgildi leiguverðs og fasteignamats innan hvers SVFN og stærðarhóps eftir ári",
+         caption = "Kóði og gögn: https://github.com/bgautijonsson/leiga_og_fasteignaverd")
+
+p
+
+ggsave(plot = p, filename = "leiga_hlutf_fasteignamat.png",
+       width = 8, height = 0.5 * 8, scale = 1.3, bg = "white")
+```
+
