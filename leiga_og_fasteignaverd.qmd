@@ -40,6 +40,7 @@ library(kableExtra)
 library(gganimate)
 library(lubridate)
 library(geomtextpath)
+library(pxweb)
 ```
 
 
@@ -57,7 +58,7 @@ d1 <- leiguskra |>
     janitor::clean_names() |> 
     mutate(ar = dmy(utgdag) |> year()) |> 
     filter(is.na(onothaefur_samningur), tegund == "Fjolbyli",
-           staerd < 150, staerd >= 50, fj_herbergi > 0, fj_herbergi < 5) |> 
+           staerd < 150, staerd >= 50) |> 
     select(sveitarfelag, ar, leiguverd = heildarverd, staerd, tegund) |> 
     mutate(staerd = cut(staerd,
                         breaks = c(50, 60, 70, 80, 90, 100, 110, 150),
@@ -148,5 +149,391 @@ p
 
 ggsave(plot = p, filename = "leiga_hlutf_kaupverd.png",
        width = 8, height = 0.5 * 8, scale = 1.5, bg = "white")
+```
+
+
+# Ráðstöfunartekjur
+
+```{r}
+d_tiund <- read_excel("V_HJUSKAPUR_TEKJUBIL_EINST.xlsx") |> 
+    janitor::clean_names() |> 
+    filter(tekjubil >= 5) |> 
+    group_by(tekjuar, tekjubil) |> 
+    summarise(fjoldi = sum(fjoldi),
+              heildartekjur = sum(heildartekjur),
+              skattar = sum(skattar),
+              heildarskuldir = sum(heildarskuldir),
+              lifeyrirsgreidslur = sum(lifeyrirsgreidslur),
+              radst_tekjur = heildartekjur - skattar - lifeyrirsgreidslur,
+              tekjuar = unique(as.numeric(tekjuar)),
+              einst_radst = radst_tekjur/fjoldi,
+              einst_heildartekjur = heildartekjur / fjoldi,
+              .groups = "drop") |> 
+    select(tekjuar, tekjubil, fjoldi, radst_tekjur, einst_radst, einst_heildartekjur) |> 
+    arrange(tekjuar, tekjubil)
+```
+
+
+```{r}
+d <- d_tiund |> 
+    select(ar = tekjuar, tekjubil, einst_radst) |> 
+    inner_join(
+        d,
+        by = "ar"
+    )
+```
+
+## Leiga sem hlutfall af ráðstöfunartekjum
+
+```{r, fig.width = 12, fig.asp = 0.5}
+plot_dat <- d |> 
+    filter(sveitarfelag %in% c("Reykjavíkurborg"),
+           staerd %in% c("70-79"),
+           tekjubil %in% c(20, 30, 40, 50, 60, 70, 80)) |> 
+    mutate(radstofunartekjur = einst_radst / 12,
+           leiga_hlutf_tekjum = leiguverd / radstofunartekjur,
+           tekjubil = str_c("Tekjubil ", tekjubil))
+
+
+p <- plot_dat |> 
+    ggplot(aes(ar, leiga_hlutf_tekjum)) +
+    geom_hline(yintercept = 1, lty = 2, alpha = 0.5) +
+    geom_line(aes(col = tekjubil, group = tekjubil)) +
+    geom_text(data = plot_dat |> filter(ar == max(ar)),
+              aes(label = tekjubil, col = tekjubil), hjust = 0, nudge_x = 0.1) +
+    geom_rangeframe() +
+    scale_x_continuous(breaks = 2011:2020, limits = c(2011, 2020.5)) +
+    scale_y_continuous(labels = label_percent(),
+                       breaks = c(range(plot_dat$leiga_hlutf_tekjum), 0, 0.5, 0.75, 1),
+                       limits = c(0, NA)) +
+    scale_colour_brewer(type = "div", palette = "RdBu") +
+    theme_tufte() +
+    theme(legend.position = "none",
+          plot.title = element_text(face = "bold")) +
+    labs(x = NULL,
+         y = NULL,
+         title = "Leiguverð sem hlutfall af ráðstöfunartjekum einstaklinga eftir tekjubili",
+         subtitle = "Reiknað fyrir miðgildi leiguverðs 70-79m2 íbúða í Reykjavík",
+         caption = "Kóði og gögn: https://github.com/bgautijonsson/leiga_og_fasteignaverd")
+
+
+p
+
+
+ggsave(plot = p, filename = "leiga_hlutf_radsttekjur.png",
+       width = 8, height = 0.5 * 8, scale = 1.3, bg = "white")
+```
+
+## Dreifing 2011 og 2020
+
+### Saman
+
+```{r, fig.width = 12, fig.asp = 0.5}
+plot_dat <- d |> 
+    filter(sveitarfelag %in% c("Reykjavíkurborg"),
+           staerd %in% c("70-79")) |> 
+    filter(ar %in% range(ar), tekjubil >= 20, tekjubil <= 90) |> 
+    mutate(radstofunartekjur = einst_radst / 12,
+           leiga_hlutf_tekjum = leiguverd / radstofunartekjur,
+           ar = factor(ar))
+
+
+p <- plot_dat |> 
+    ggplot(aes(tekjubil, leiga_hlutf_tekjum)) +
+    geom_hline(yintercept = 1, lty = 2, alpha = 0.5) +
+    geom_line(aes(col = ar, group = ar)) +
+    geom_text(data = plot_dat |> filter(tekjubil == max(tekjubil)),
+              aes(label = ar, col = ar), hjust = 0, nudge_x = 0.1) +
+    geom_rangeframe() +
+    scale_x_continuous(breaks = 10 * 2:9,
+                       limits = c(20, 91)) +
+    scale_y_continuous(labels = label_percent(),
+                       breaks = c(range(plot_dat$leiga_hlutf_tekjum), 0, 0.5, 0.75, 1),
+                       limits = c(0, NA)) +
+    scale_colour_brewer(type = "qual", palette = "Set1") +
+    theme_tufte() +
+    theme(legend.position = "none",
+          plot.title = element_text(face = "bold"),
+          axis.title.x = element_text(size = 8)) +
+    labs(x = str_c("Tekjubil",
+                   "\n",
+                   "(0 er lægsti tekjuhópurinn og 100 er hæsti)"),
+         y = NULL,
+         title = "Leiguverð sem hlutfall af ráðstöfunartjekum einstaklinga eftir tekjubili",
+         subtitle = "Reiknað fyrir miðgildi leiguverðs 70-79m2 íbúða í Reykjavík",
+         caption = "Kóði og gögn: https://github.com/bgautijonsson/leiga_og_fasteignaverd")
+
+
+p
+
+
+ggsave(plot = p, filename = "leiga_hlutf_radsttekjur_dreifing.png",
+       width = 8, height = 0.5 * 8, scale = 1.2, bg = "white")
+```
+
+### Breyting
+
+```{r, fig.width = 12, fig.asp = 0.5}
+plot_dat <- d |> 
+    filter(sveitarfelag %in% c("Reykjavíkurborg"),
+           staerd %in% c("70-79")) |> 
+    filter(ar %in% range(ar), tekjubil >= 20, tekjubil <= 90) |> 
+    mutate(radstofunartekjur = einst_radst / 12,
+           leiga_hlutf_tekjum = leiguverd / radstofunartekjur,
+           ar = factor(ar)) |> 
+    group_by(tekjubil) |> 
+    summarise(breyting = diff(leiga_hlutf_tekjum))
+
+
+p <- plot_dat |> 
+    ggplot(aes(tekjubil, breyting)) +
+    geom_hline(yintercept = 0, lty = 2, alpha = 0.5) +
+    geom_line() +
+    geom_rangeframe() +
+    scale_x_continuous(breaks = 10 * 2:9,
+                       limits = c(20, 91)) +
+    scale_y_continuous(labels = label_percent(suffix = "%-stig", decimal.mark = ",", big.mark = "."),
+                       breaks = c(range(plot_dat$breyting), 0, 0.1, 0.13),
+                       limits = c(0, NA)) +
+    scale_colour_brewer(type = "qual", palette = "Set1") +
+    theme_tufte() +
+    theme(legend.position = "none",
+          plot.title = element_text(face = "bold"),
+          axis.title.x = element_text(size = 8)) +
+    labs(x = str_c("Tekjubil",
+                   "\n",
+                   "(0 er lægsti tekjuhópurinn og 100 er hæsti)"),
+         y = NULL,
+         title = "Breyting á leiguverði sem hlutfall af ráðstöfunartjekum einstaklinga (2011 - 2020)",
+         subtitle = "Reiknað fyrir miðgildi leiguverðs 70-79m2 íbúða í Reykjavík",
+         caption = "Kóði og gögn: https://github.com/bgautijonsson/leiga_og_fasteignaverd")
+
+
+p
+
+
+ggsave(plot = p, filename = "breyting_leiga_hlutf_radsttekjur_dreifing.png",
+       width = 8, height = 0.5 * 8, scale = 1.2, bg = "white")
+```
+
+## Áhrif á ráðstöfunartekjur
+
+### Saman
+
+```{r}
+plot_dat <- d |> 
+    filter(sveitarfelag %in% c("Reykjavíkurborg"),
+           staerd %in% c("70-79")) |> 
+    filter(ar %in% range(ar), tekjubil >= 20, tekjubil <= 90) |> 
+    mutate(radstofunartekjur = einst_radst / 12,
+           leiga_hlutf_tekjum = leiguverd / radstofunartekjur,
+           tekjur_eftir = radstofunartekjur - leiguverd) |> 
+    inner_join(
+        tibble(
+            ar = c(2011, 2020),
+            visitala_neysluverds = c(360 / 360, 412 / 360)
+        )
+    ) |> 
+    mutate(tekjur_eftir = tekjur_eftir / visitala_neysluverds,
+           ar = factor(ar))
+
+
+p <- plot_dat |> 
+    ggplot(aes(tekjubil, tekjur_eftir)) +
+    geom_hline(yintercept = 0, lty = 2, alpha = 0.5) +
+    geom_line(aes(col = ar, group = ar)) +
+    geom_text(data = plot_dat |> filter(tekjubil == max(tekjubil)),
+              aes(label = ar, col = ar), hjust = 0, nudge_x = 0.1) +
+    geom_rangeframe() +
+    scale_x_continuous(breaks = 10 * 2:9,
+                       limits = c(20, 91)) +
+    scale_y_continuous(labels = label_number(suffix = " kr", big.mark = ".", decimal.mark = ","),
+                       breaks = c(range(plot_dat$tekjur_eftir), 0, 50000, 100000, 200000, 300000)) +
+    scale_colour_brewer(type = "qual", palette = "Set1") +
+    theme_tufte() +
+    theme(legend.position = "none",
+          plot.title = element_text(face = "bold"),
+          axis.title.x = element_text(size = 8)) +
+    labs(x = str_c("Tekjubil",
+                   "\n",
+                   "(0 er lægsti tekjuhópurinn og 100 er hæsti)"),
+         y = NULL,
+         title = "Hvað eiga einstaklingar miklar mánaðartekjur eftir þegar er búið að greiða leigu?",
+         subtitle = "Reiknað á verðlagi 2020 fyrir miðgildi leiguverðs 70-79m2 íbúða í Reykjavík",
+         caption = "Kóði og gögn: https://github.com/bgautijonsson/leiga_og_fasteignaverd")
+
+
+p
+
+
+ggsave(plot = p, filename = "tekjur_eftir_manudi_dreifing.png",
+       width = 8, height = 0.5 * 8, scale = 1.2, bg = "white")
+```
+
+## Breyting
+
+```{r}
+plot_dat <- d |> 
+    filter(sveitarfelag %in% c("Reykjavíkurborg"),
+           staerd %in% c("70-79")) |> 
+    filter(ar %in% range(ar), tekjubil >= 20, tekjubil <= 90) |> 
+    mutate(radstofunartekjur = einst_radst / 12,
+           leiga_hlutf_tekjum = leiguverd / radstofunartekjur,
+           tekjur_eftir = radstofunartekjur - leiguverd) |> 
+    inner_join(
+        tibble(
+            ar = c(2011, 2020),
+            visitala_neysluverds = c(360 / 360, 412 / 360)
+        )
+    ) |> 
+    mutate(tekjur_eftir = tekjur_eftir / visitala_neysluverds,
+           ar = factor(ar)) |> 
+    group_by(tekjubil) |> 
+    summarise(breyting = diff(tekjur_eftir))
+
+
+p <- plot_dat |> 
+    ggplot(aes(tekjubil, breyting)) +
+    geom_hline(yintercept = 0, lty = 2, alpha = 0.5) +
+    geom_line() +
+    geom_rangeframe() +
+    scale_x_continuous(breaks = 10 * 2:9,
+                       limits = c(20, 91)) +
+    scale_y_continuous(labels = label_number(suffix = " kr", big.mark = ".", decimal.mark = ","),
+                       breaks = c(range(plot_dat$breyting), 0, 25000, 50000)) +
+    scale_colour_brewer(type = "qual", palette = "Set1") +
+    theme_tufte() +
+    theme(legend.position = "none",
+          plot.title = element_text(face = "bold"),
+          axis.title.x = element_text(size = 8)) +
+    labs(x = str_c("Tekjubil",
+                   "\n",
+                   "(0 er lægsti tekjuhópurinn og 100 er hæsti)"),
+         y = NULL,
+         title = "Breyting á eftirstandandi mánaðartekjum þegar er búið að greiða leigu (2011 - 2020)",
+         subtitle = "Reiknað á verðlagi 2020 fyrir miðgildi leiguverðs 70-79m2 íbúða í Reykjavík",
+         caption = "Kóði og gögn: https://github.com/bgautijonsson/leiga_og_fasteignaverd")
+
+
+p
+
+
+ggsave(plot = p, filename = "breyting_tekjur_eftir_manudi_dreifing.png",
+       width = 8, height = 0.5 * 8, scale = 1.2, bg = "white")
+```
+
+# Vísitölur
+
+
+
+```{r}
+visitala_launa <- pxweb_get(
+    url ="https://px.hagstofa.is:443/pxis/api/v1/is/Samfelag/launogtekjur/2_launavisitala/1_launavisitala/VIS04000.px", 
+    query = list(
+        "Ár" = c("*"),
+        "Mánuður" = c("*"),
+        "Breytingar" = c("0")
+    ),
+    verbose = FALSE
+) |> 
+    as.data.frame() |> 
+    as_tibble() |> 
+    janitor::clean_names()  |> 
+    rename(launavisitala = launavisitala_fra_1989) |> 
+    select(-breytingar) |> 
+    mutate(manudur = case_when(manudur == "Janúar" ~ 1,
+                               manudur == "Febrúar" ~ 2,
+                               manudur == "Mars" ~ 3,
+                               manudur == "Apríl" ~ 4,
+                               manudur == "Maí" ~ 5,
+                               manudur == "Júní" ~ 6,
+                               manudur == "Júlí" ~ 7,
+                               manudur == "Ágúst" ~ 8,
+                               manudur == "September" ~ 9,
+                               manudur == "Október" ~ 10,
+                               manudur == "Nóvember" ~ 11,
+                               manudur == "Desember" ~ 12)) |> 
+    drop_na() |> 
+    mutate(manudur = str_pad(manudur, width = 2, side = "left", pad = "0"),
+           dags = str_c(ar, "-", manudur, "-01") |> ymd()) |> 
+    select(dags, launavisitala)
+
+visitala_leiguverds <- read_csv2("hfuborgarsvi.csv") |> 
+    janitor::clean_names() |> 
+    separate(manudur, into = c("manudur", "ar"), sep = " ") |> 
+    mutate(manudur = case_when(manudur == "Janúar" ~ 1,
+                               manudur == "Febrúar" ~ 2,
+                               manudur == "Mars" ~ 3,
+                               manudur == "Apríl" ~ 4,
+                               manudur == "Maí" ~ 5,
+                               manudur == "Júní" ~ 6,
+                               manudur == "Júlí" ~ 7,
+                               manudur == "Ágúst" ~ 8,
+                               manudur == "September" ~ 9,
+                               manudur == "Október" ~ 10,
+                               manudur == "Nóvember" ~ 11,
+                               manudur == "Desember" ~ 12)) |> 
+    mutate(manudur = str_pad(manudur, width = 2, side = "left", pad = "0"),
+           dags = str_c(ar, "-", manudur, "-01") |> ymd()) |> 
+    select(dags, visitala_leiguverds)
+
+
+visitolur <- visitala_launa |> 
+    inner_join(
+        visitala_leiguverds,
+        by = "dags"
+    ) |> 
+    mutate(visitala_leiguverds = visitala_leiguverds / 100,
+           launavisitala = launavisitala / launavisitala[dags == min(dags)])
+```
+
+
+```{r, fig.width = 12, fig.asp = 0.5}
+plot_dat <- visitolur |> 
+    # filter(year(dags) >= 2021) |>
+    mutate(launavisitala = launavisitala / launavisitala[dags == min(dags)],
+           visitala_leiguverds = visitala_leiguverds / visitala_leiguverds[dags == min(dags)]) |> 
+    mutate(hlutf = visitala_leiguverds / launavisitala) |> 
+    pivot_longer(c(-dags)) |> 
+    mutate(tegund = ifelse(name == "hlutf", "Vísitala leiguverðs deilt með launa", "Vísitölur") |> 
+               fct_relevel("Vísitölur"),
+           name = fct_recode(name, 
+                             "Laun" = "launavisitala",
+                             "Leiguverð" = "visitala_leiguverds"),
+           y = value,
+           y = case_when(name == "Laun" ~ y + 0.02,
+                         name == "Leiguverð" ~ y - 0.02))
+
+p <- plot_dat |> 
+    ggplot(aes(dags, value)) +
+    geom_hline(yintercept = 1, lty = 2, alpha = 0.6) +
+    geom_line(aes(group = name, col = name)) +
+    geom_text(data = plot_dat |> filter(dags == max(dags), tegund == "Vísitölur"),
+              aes(label = name, col = name, y = y), hjust = 0, nudge_x = 20) +
+    geom_blank(data = tibble(dags = ymd("2020-01-01"),
+                             value = 0.88,
+                             name = "hlutf",
+                             tegund = "Vísitala leiguverðs deilt með launa") |> 
+                   mutate(tegund = factor(tegund, levels = c("Vísitölur", "Vísitala leiguverðs deilt með launa")))) +
+    geom_rangeframe() +
+    scale_x_date(limits = ymd(c("2011-01-01"), ymd("2022-10-01"))) +
+    scale_y_continuous(breaks = pretty_breaks(8),
+                       labels = function(x) number(100 * x)) +
+    scale_colour_manual(values = c("black",
+                                   "#377eb8",
+                                   "#e41a1c")) +
+    facet_grid(tegund ~ ., scales = "free_y") +
+    theme_tufte() +
+    theme(strip.background = element_rect(fill = "grey85"),
+          legend.position = "none",
+          plot.title = element_text(face = "bold")) +
+    labs(x = NULL,
+         y = NULL,
+         title = "Vísitölur launa og leiguverðs, og hlutfall þeirra")
+
+p 
+
+ggsave(plot = p, filename = "visitolur_og_hlutf.png",
+       width = 8, height = 0.5 * 8, scale = 1.3, bg = "white")
 ```
 
